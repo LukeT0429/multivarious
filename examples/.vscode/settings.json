@@ -16,8 +16,10 @@
   },
 
   // Windows -  edit this if you use Windows 
+  
   "terminal.integrated.env.windows": {
-    "PYTHONPATH": "C:\\Users\\<USERNAME>\\Desktop\\stuff\\Code\\multivarious"
+    "PYTHONPATH": "C:\\Users\\let04\\Desktop\\UDO\\Code"
   }
 }
+  
 
