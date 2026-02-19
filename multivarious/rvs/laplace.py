@@ -1,146 +1,235 @@
+## laplace distribution
+# github.com/hpgavin/multivarious ... rvs/laplace
+
 import numpy as np
 
+from multivarious.utl.correlated_rvs import correlated_rvs
 
-def pdf(x, muX, sigmaX):
-    '''
+
+def _ppp_(x, meanX, sdvnX):
+    """
+    Validate and preprocess input parameters for consistency and correctness.
+
+    INPUTS:
+        x : array_like
+            Evaluation points
+        meanX : float or array_like
+            Mean(s) (location parameter) of the distribution
+        sdvnX : float or array_like
+            Standard deviation(s) (scale parameter) of the distribution (must be > 0)
+
+    OUTPUTS:
+        x : ndarray
+            Evaluation points as array
+        meanX : ndarray
+            Means as column array
+        sdvnX : ndarray
+            Standard deviations as column array
+        n : int
+            Number of random variables
+    """ 
+
+    # Convert inputs to arrays
+    # Python does not implicitly handle scalars as arrays. 
+    x = np.atleast_1d(x).astype(float)
+
+    meanX = np.atleast_1d(meanX).reshape(-1,1).astype(float)
+    sdvnX = np.atleast_1d(sdvnX).reshape(-1,1).astype(float)
+    n = len(meanX)   
+    N = len(x)
+        
+    # Validate parameter dimensions 
+    if not (len(meanX) == n and len(sdvnX) == n):
+        raise ValueError(f"All parameter arrays must have the same length. "
+                        f"Got meanX:{len(meanX)}, sdvnX:{len(sdvnX)}")
+
+    # Validate parameter values 
+    if np.any(sdvnX <= 0):
+        raise ValueError("laplace: all sdvnX values must be greater than zero")
+
+    return x, meanX, sdvnX, n, N
+
+
+def pdf(x, meanX, sdvnX):
+    """
     laplace.pdf
 
     Computes the PDF of the Laplace distribution with mean (location)
-    parameter muX and standard deviation (scale) parameter sigmaX.
+    parameter meanX and standard deviation (scale) parameter sdvnX.
 
-    Parameters:
-        x : array_like or float
+    INPUTS:
+        x : array_like
             Evaluation points
-        muX : float
-            Mean (location) parameter
-        sigmaX : float
-            Standard deviation (scale) parameter (must be > 0)
+        meanX : float or array_like, shape (n,)
+            Mean(s) (location parameter)
+        sdvnX : float or array_like, shape (n,)
+            Standard deviation(s) (scale parameter) (must be > 0)
 
-    Output:
-        f : ndarray or float
-            PDF values at each point in x
+    OUTPUTS:
+        f : ndarray, shape (n, N)
+            PDF values at each point in x for each of n random variables
 
-    Reference:
+    Notes
+    -----
+    f(x) = (1/(√2·σ)) exp(-√2|x-μ|/σ)
+
+    Reference
+    ---------
     https://en.wikipedia.org/wiki/Laplace_distribution
-    '''
-    x = np.asarray(x, dtype=float)
+    """
+
+    x, meanX, sdvnX, n, N = _ppp_(x, meanX, sdvnX)
+
     sr2 = np.sqrt(2)
-    f = (1 / (sr2 * sigmaX)) * np.exp(-sr2 * np.abs(x - muX) / sigmaX)
+    f = (1 / (sr2 * sdvnX)) * np.exp(-sr2 * np.abs(x - meanX) / sdvnX)
+
+    if n == 1 and f.shape[0] == 1:
+        f = f.flatten()
+    
     return f
 
 
 def cdf(x, params):
-    '''
+    """
     laplace.cdf
 
-    Computes the CDF of the Laplace distribution with parameters muX and sigmaX.
+    Computes the CDF of the Laplace distribution with parameters meanX and sdvnX.
 
-    Parameters:
-        x : array_like or float
+    INPUTS:
+        x : array_like
             Evaluation points
-        params : sequence of floats
-            [muX, sigmaX] where muX is the mean (location) parameter and
-            sigmaX is the standard deviation (scale) parameter (must be > 0)
+        params : array_like [meanX, sdvnX]
+            meanX : float or array_like
+                Mean(s) (location parameter)
+            sdvnX : float or array_like
+                Standard deviation(s) (scale parameter) (must be > 0)
 
-    Output:
-        F : ndarray or float
-            CDF values at each point in x
+    OUTPUTS:
+        F : ndarray, shape (n, N)
+            CDF values at each point in x for each of n random variables
 
-    Reference:
+    Notes
+    -----
+    F(x) = 0.5·exp(√2(x-μ)/σ) for x ≤ μ
+    F(x) = 1 - 0.5·exp(-√2(x-μ)/σ) for x > μ
+
+    Reference
+    ---------
     https://en.wikipedia.org/wiki/Laplace_distribution
-    '''
-    x = np.asarray(x, dtype=float)
-    muX = params[0]
-    sigmaX = params[1]
+    """
+    
+    meanX, sdvnX = params
+
+    x, meanX, sdvnX, n, N = _ppp_(x, meanX, sdvnX)
+
     sr2 = np.sqrt(2)
 
-    F = np.zeros_like(x)
-    F[x <= muX] = 0.5 * np.exp(-sr2 * np.abs(x[x <= muX] - muX) / sigmaX)
-    F[x > muX] = 1 - 0.5 * np.exp(-sr2 * np.abs(x[x > muX] - muX) / sigmaX)
+    F = np.zeros((n,N))
+
+    for i in range(n): 
+        mask = x <= meanX[i]
+        F[i,mask] =       0.5 * np.exp( sr2 * (x[mask] - meanX[i]) / sdvnX[i])
+        mask = ~mask
+        F[i,mask] = 1.0 - 0.5 * np.exp(-sr2 * (x[mask] - meanX[i]) / sdvnX[i])
+    
+    if n == 1 and F.shape[0] == 1:
+        F = F.flatten()
+    
     return F
 
 
-def inv(P, muX, sigmaX):
-    '''
+def inv(F, meanX, sdvnX):
+    """
     laplace.inv
 
     Computes the inverse CDF (quantile function) of the Laplace distribution
-    with mean (location) muX and standard deviation (scale) sigmaX.
+    with mean (location) meanX and standard deviation (scale) sdvnX.
 
-    Parameters:
-        P : array_like or float
+    INPUTS:
+        F : array_like
             Non-exceedance probabilities (must be in [0, 1])
-        muX : float
-            Mean (location) parameter
-        sigmaX : float
-            Standard deviation (scale) parameter (must be > 0)
+        meanX : float or array_like, shape (n,)
+            Mean(s) (location parameter)
+        sdvnX : float or array_like, shape (n,)
+            Standard deviation(s) (scale parameter) (must be > 0)
 
-    Output:
-        X : ndarray or float
-            Quantile values corresponding to probabilities P
+    OUTPUTS:
+        x : ndarray
+            Quantile values corresponding to probabilities F
 
-    Reference:
+    Notes
+    -----
+    x = μ + (σ/√2)·ln(2F) for F ≤ 0.5
+    x = μ - (σ/√2)·ln(2(1-F)) for F > 0.5
+
+    Reference
+    ---------
     https://en.wikipedia.org/wiki/Laplace_distribution
-    '''
-    P = np.atleast_1d(np.asarray(P, dtype=float))
-    sr2 = np.sqrt(2)
-    X = muX + sigmaX / sr2 * np.log(2 * P)  
-    idx = X >= muX
-    X[idx] = muX - sigmaX / sr2 * np.log(2 - 2 * P[idx]) 
-    return X if X.size > 1 else X[0]
+    """
+    
+    _, meanX, sdvnX, n, N = _ppp_(F, meanX, sdvnX)
 
-def rnd(mX, sX, r=None, c=None, z=None):
-    '''
+
+    F = np.atleast_2d(F).astype(float)
+    F = np.clip(F, np.finfo(float).eps, 1 - np.finfo(float).eps)
+    N = F.shape[1]    
+
+    sr2 = np.sqrt(2)
+
+    x = np.zeros((n,N))
+  
+    for i in range(n): 
+        mask = F[i,:] <= 0.5 
+        x[i,mask] = meanX[i] + sdvnX[i] / sr2 * np.log(2 * F[i,mask]) 
+        mask = ~mask
+        x[i,mask] = meanX[i] - sdvnX[i] / sr2 * np.log(2 * (1 - F[i,mask]))
+
+#   if x.size > 1 else x.item()
+    if n == 1 and x.shape[0] == 1:
+        x = x.flatten()
+    
+    return x
+
+
+def rnd(meanX, sdvnX, N, R=None, seed=None):
+    """
     laplace.rnd
 
     Generates random samples from the Laplace distribution using the
     inverse transform sampling method.
 
-    Parameters:
-        mX : float
-            Mean (location) parameter
-        sX : float
-            Standard deviation (scale) parameter (must be > 0)
-        r : int
-            Number of rows in the output
-        c : int
-            Number of columns in the output
-        z : ndarray, optional
-            Matrix of uniform(0,1) random numbers to use directly instead of
-            generating new random samples
+    INPUTS:
+        meanX : float or array_like, shape (n,)
+            Mean(s) (location parameter)
+        sdvnX : float or array_like, shape (n,)
+            Standard deviation(s) (scale parameter) (must be > 0)
+        N : int
+            Number of observations per random variable
+        R : ndarray, shape (n, n), optional
+            Correlation matrix for generating correlated samples.
+            If None, generates uncorrelated samples.
+        seed : int, optional
+            Random seed for reproducibility
 
-    Output:
-        x : ndarray of shape (r, c)
-            Random samples drawn from the Laplace distribution
+    OUTPUTS:
+        X : ndarray, shape (n, N) or shape (N,) if n=1
+            Random samples drawn from the Laplace distribution.
+            Each row corresponds to one random variable.
+            Each column corresponds to one sample.
 
-    Reference:
+    Notes
+    -----
+    Uses inverse transform method with correlated uniform variates.
+
+    Reference
+    ---------
     https://en.wikipedia.org/wiki/Laplace_distribution
-    '''
-    if np.any(sX <= 0) or np.any(np.isinf(sX)):
-        raise ValueError("laplace_rnd: sX must be > 0 and finite")
+    """
+    
+    _, meanX, sdvnX, n, _ = _ppp_(0, meanX, sdvnX)
 
-    sr2 = np.sqrt(2)
+    _, _, U = correlated_rvs(R, n, N, seed)
 
-    # Infer shape
-    if z is not None:
-        u = z
-        r, c = u.shape
-    else:
-        if r is None or c is None:
-            if np.isscalar(mX):
-                r, c = 1, 1
-            else:
-                r, c = np.asarray(mX).shape
-        u = np.random.rand(r, c)
+    X = inv(U, meanX, sdvnX)
 
-    # Broadcast parameters
-    mX = np.full((r, c), mX) if np.isscalar(mX) else np.asarray(mX)
-    sX = np.full((r, c), sX) if np.isscalar(sX) else np.asarray(sX)
-
-    x = np.empty((r, c))
-    in_mask = u <= 0.5
-    x[in_mask] = mX[in_mask] + sX[in_mask] / sr2 * np.log(2 * u[in_mask])
-    ip_mask = ~in_mask
-    x[ip_mask] = mX[ip_mask] - sX[ip_mask] / sr2 * np.log(2 * (1 - u[ip_mask]))
-
-    return x
+    return X

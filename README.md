@@ -2,8 +2,8 @@
 
 A multitude of various Python modules for multivariable things like digital signal processing, fitting models to data, linear time invariant systems, optimization, ordinary differential equations and random variables. 
 
-This repository is pedagogical and emphasizes a transparent implementation of numerical methods for multivariate problems with integrated visualization tools. 
-This repository stems from decades of undergraduate and graduate engineering instruction.  
+Multivarious is pedagogical.  It emphasizes a transparent implementation of numerical methods for multivariate problems with integrated visualization tools. 
+The methods and code in this repository stem from decades of undergraduate and graduate engineering instruction.  
 
 This repository is under development.  Updates to this README lead or lag the addition of code. 
 
@@ -16,12 +16,14 @@ To generate, transform, and plot multivariate discrete time sequences
 | module              | description                                                                             |
 | ------------------- | --------------------------------------------------------------------------------------- |
 | **accel2displ**     | acceleration, velocity and displacement without much bias or drift from acceleration    |
+| **autocorr**        | autocorrelation of a time series                                                        |
 | **butter_synth_ss** | state space butterworth filter design using the matrix expnential                       |
 | **cdiff**           | central differences along the rows of a 2D array                                        |
 | **chrip**           | onomatopoeia for bird sounds and <br> sine-sweep signals with derivitives and integrals |
 | **csd**             | estimate the cross-power spectra of a pair of signals and its chi^2 confidince interval |
 | **eqgm_1d**         | a single axis of simulated earthquake ground motions                                    |
 | **ftdsp**           | Fourier transform based digitial signal processing                                      |
+| **lers_2d**         | response spectrum for biaxial motion                                                    |
 | **psd**             | estimate the auto-power spectral density of a signal and its chi^2 confidence interval  |
 | **taper**           | taper the ends of the rows of a 2D array - Planck or Tukey windows                      |
 
@@ -40,7 +42,7 @@ To generate, transform, and plot multivariate discrete time sequences
 To analyze and transform linear time invariant systems
 defined by 
 linear differential equations, _d**x**_/_dt_ = _**A x**_(_t_) + _**B u**_(_t_)
-or linear difference equations,  **x**(_k_+1) = _**A x**_(_k_) + _**B u**_(_k_)
+or linear difference equations,  _**x**_(_k_+1) = _**A x**_(_k_) + _**B u**_(_k_)
 and corresponding system outputs, _**y**_ = _**C x**_ + _**D u**_
 
 | module            | description                                                                |
@@ -87,9 +89,9 @@ _**g**_(_**v**_) is a vector of inequality constraints.
 | module     | description                                                           |
 | ---------- | --------------------------------------------------------------------- |
 | **fsolve** | solve a system of nonlinear algebraic equations                       |
-| **nms**    | nonlinear constrained optimization - Nelder Mead Simplex              |
-| **ors**    | nonlinear constrained optimization - Optimized Random Search          |
-| **sqp**    | nonlinear constrained optimization - Sequential Quadratic Programming |
+| **nms**    | Nelder Mead Simplex              |
+| **ors**    | Optimized Random Search          |
+| **sqp**    | Sequential Quadratic Programming |
 
 ## rvs . random variables
 
@@ -100,6 +102,7 @@ methods: distribution.pdf(), distribution.cdf(), distribution.inv(), distributio
 | module               | description                                                                                         |
 | -------------------- | --------------------------------------------------------------------------------------------------- |
 | **beta**             | [beta](http://en.wikipedia.org/wiki/Beta_distribution)                                              |
+| **binomial**         | [binomial](http://en.wikipedia.org/wiki/Binomial_distribution)                                              |
 | **chi2**             | [chi-squared](http://en.wikipedia.org/wiki/Chi-squared_distribution)                                |
 | **exponential**      | [exponential](http://en.wikipedia.org/wiki/Exponential_distribution)                                |
 | **extreme_value_I**  | [type I extreme value]( )                                                                           |
@@ -134,63 +137,57 @@ methods: distribution.pdf(), distribution.cdf(), distribution.inv(), distributio
 
 # installation
 
-If you have not yet installed Python or VS Code, install Python (via [miniconda](https://www.anaconda.com/docs/getting-started/miniconda/install)) and VS Code ([via the termainal ](https://microsoft.github.io/vscode-essentials/en/01-getting-started.html))
+If you have not yet installed git, Python or VS Code, follow the instructions in [section 2 of this Python tutorial](https://www.duke.edu/~hpgavin/pythonSkills+Debugging.pdf) 
 
-A. To configure VS Code, open VS Code and ...
-  
-  VS Code > File > Preferences > Settings > Search Settings ... <br> enter: python terminal execute ... <br> click the checkbox 
-  
-  VS Code > File > Preferences > Settings > Search Settings ... <br> enter: python terminal launch > Enter in settings.json ... <br> edit the following line, as shown below 
-  
-  ```
-  "python.terminal.launchArgs": ["-i"] 
-  ```
-  
-  Save your changes to this settings.json file and close the VS Code edit window. 
+A. Download or Update: Open any terminal (a VS Code Terminal or any terminal app on your computer) and: (1.) download a fresh copy or (2.) update an existing copy 
+  1. download a fresh copy 
 
-B. (**Windows** and **macOS**) Install multivarious using `git` and `pip` (for example, into a Code folder on your Desktop).
-  
-  Open a terminal window (Win11: (Win+X) and choose Windows Terminal) or (macOS: (Cmd+Space), type Terminal) and enter the commands:
-  ``` bash
-  cd ~/Desktop/Code
-  git clone https://github.com/hpgavin/multivarious
-  pip install -e multivarious 
-  ```
-
-C. (**linux**) Install multivarious using `git` (for example into Desktop/Code) and set the `PYTHONPATH` 
- 
-  ``` bash
-  cd ~/Desktop/Code
-  git clone https://github.com/hpgavin/multivarious
-  ```
-  Open your `~/.profile` and copy and paste the line below it into your `~\.profile`. 
-  ```bash
-  export PYTHONPATH="$PYTHONPATH:$HOME/Desktop/Code/multivarious/"           
-  ```
-  Verify the edits have taken effect system-wide ...
-  ```bash
-  source ~/.profile   
-  echo $PYTHONPATH  
-  ```
-  If the terminal shows that your `PYTHONPATH` is set as intended, it has worked. 
-  VS Code will now find multivarious.
-
-    
-D. Verify that VS Code has access to the multivarious library. 
-  
-   VS Code > File > Open Folder ... > navigate to your multivarious/examples folder > Open
-    
-   VS Code > File Explorer > select `verify_path_import.py` > click the right arrow in the Edit menu [Run Python File]
-    
-   This will open a new Terminal Window which should display ...
-       
+   ``` bash
+   cd ~/Desktop/Code
+   git clone https://github.com/hpgavin/multivarious
    ```
-   hello
-   verifying that PYTHONPATH has been set ... 
-   PYTHONPATH env: /home/USERNAME/Desktop/Code/multivarious <<< via PYTHONPATH
-   ... and yes, yes it has. Great!  
-   verifying that multivarious can be imported ... 
-   ... and yes, yes it can. Great!  
+  2. update an existing copy 
+
+   ``` bash
+   cd ~/Desktop/Code/multivarious 
+   git pull
    ```
- 
-   [CTRL-D] - at the `>>>` Python prompt to exit the Python Interactive mode and return to the terminal prompt.   
+
+B.  (1.) `pip install` for VS Code and/or (2.) set the `PYTHONPATH` or (3.) do something scarry or (4.) use a venv.   
+  A chat on issues with Debian, python, pip, and PYTHONPATH is in multivarious/examples/doc/. 
+
+  1. Within a VS Code Terminal,  (Terminal > New Terminal) 
+
+   ``` bash
+   cd ~/Desktop/Code/multivarious  
+   pip install .  
+   ```
+
+  This will create directories `build/` and `multivarious.egg-info/.` You may delete the `build/` directory.  Keep the `multivarious.egg-info/` directory.  If `pip install` indicates the error: `error: externally-managed-environment` then set the `PYTHONPATH` (option (2.) below)
+
+  2. (If you have completed (1.) above and are using Python only within VS Code, then this step is optional.)
+     Open one of the following links and follow the instructions.  
+   * [Windows-shell.txt](https://people.duke.edu/~hpgavin/Windows-shell.txt)  
+   * [macOS-shell.txt](https://people.duke.edu/~hpgavin/macOS-shell.txt)   
+   * [linux-shell.txt](https://people.duke.edu/~hpgavin/linux-shell.txt)
+
+  3. If both (1.) and (2.) fail, please know that you can confidently install multivarious by doing this scarry thing
+
+   ``` bash
+   cd ~/Desktop/Code/multivarious 
+   pip install --break-system-packages . 
+   ```
+
+  4. Use a venv 
+
+C. Verify that VS Code has access to the multivarious library. 
+  
+   VS Code > Terminal > New Terminal 
+
+   ``` bash
+   python
+   >>> import multivarious
+   ```
+
+   If this message ... `ModuleNotFoundError: No module named 'multivarious'` ... does not appear, you have installed `multivarious` correctly.
+

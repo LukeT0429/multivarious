@@ -5,7 +5,50 @@ import numpy as np
 from scipy.special import beta as beta_func
 from scipy.special import betainc
 from scipy.special import betaincinv
-from scipy.stats import norm
+
+from multivarious.utl.correlated_rvs import correlated_rvs
+
+def _ppp_(x, a, b, q, p ):
+    '''
+    Validate and preprocess input parameters for consistency and correctness.
+
+    INPUTS:
+        x : array_like
+            Evaluation points
+        a : float
+            Minimum of the distribution
+        b : float
+            Maximum of the distribution (must be > a)
+        q : float
+            First shape parameter
+        p : float
+            Second shape parameter
+    '''
+
+    # Convert inputs to arrays
+    # Python does not implicitly handle scalars as arrays. 
+    x = np.atleast_1d(x).astype(float)
+    a = np.atleast_1d(a).astype(float) 
+    b = np.atleast_1d(b).astype(float)
+    q = np.atleast_1d(q).astype(float)
+    p = np.atleast_1d(p).astype(float)
+    n = len(a)   
+    N = len(x)
+
+    # Validate parameter dimensions 
+    if not (len(b) == n and len(q) == n and len(p) == n):
+        raise ValueError(f"All parameter arrays must have the same length. "
+                        f"Got a:{len(a)}, b:{len(b)}, q:{len(q)}, p:{len(p)}")
+    
+    # Validate parameter values 
+    if np.any(b <= a):
+        raise ValueError("beta.rnd: all b values must be greater than corresponding a values")
+    if np.any(q <= 0):
+        raise ValueError("beta.rnd: q must be positive")
+    if np.any(p <= 0):
+        raise ValueError("beta.rnd: p must be positive")
+
+    return x, a, b, q, p, n, N
 
 
 def pdf(x, a, b, q, p):
@@ -31,27 +74,29 @@ def pdf(x, a, b, q, p):
         f : ndarray
             PDF evaluated at x
     '''
-    x = np.asarray(x, dtype=float)
-    
-    # Check parameter validity
-    if b <= a:
-        raise ValueError(f"beta_pdf: a = {a}, b = {b} — a must be less than b")
-    
+
+    x, a, b, q, p, n, N = _ppp_(x, a, b, q, p)
+
     # Initialize PDF output as zeros
-    f = np.zeros_like(x)
+    f = np.zeros((n,N))
 
     # Only compute for values within [a, b]
-    valid = (x >= a) & (x <= b)
     
     # Beta PDF formula (with change of variable from [0,1] to [a,b])
-    numerator = (x[valid] - a) ** (q - 1) * (b - x[valid]) ** (p - 1)
-    denominator = beta_func(q, p) * (b - a) ** (q + p - 1)
-    f[valid] = numerator / denominator
+
+    for i in range(n): 
+        mask = (x >= a[i]) & (x <= b[i])
+        numerator = (x[mask] - a[i])**(q[i] - 1) * (b[i] - x[mask])**(p[i]-1)
+        denominator = beta_func(q[i], p[i]) * (b[i] - a[i])**(q[i] + p[i] - 1)
+        f[i,mask] = numerator / denominator
+
+    if n == 1 and x.shape[0] == 1:
+        f = f.flatten()
 
     return f
 
 
-def cdf(x, a, b, q, p):
+def cdf(x, params ):
     '''
     beta.cdf
 
@@ -61,13 +106,14 @@ def cdf(x, a, b, q, p):
     INPUTS:
         x = array_like 
             Evaluation points
-        a = float 
+        params = array_like [ a , b , q, p  ]
+        a = params[0] float 
             Minimum of the distribution
-        b = float
+        b = params[1] float
             Maximum of the distribution (must be > a)
-        q = float
+        q = params[2] float
             First shape parameter
-        p = float 
+        p = params[3] float 
             Second shape parameter
 
     OUTPUT:
@@ -77,18 +123,22 @@ def cdf(x, a, b, q, p):
         F(x) = I_{(x - a) / (b - a)} (q, p)
     where I is the regularized incomplete beta function.
     '''
-    x = np.asarray(x, dtype=float)
 
-    # Check parameter validity
-    if b <= a:
-        raise ValueError(f"beta_cdf: a = {a}, b = {b} — a must be less than b")
+    a, b, q, p = params
+
+    x, a, b, q, p, n, N = _ppp_(x, a, b, q, p)
 
     # Compute z = (x - a) / (b - a), clipped to [0, 1]
     z = (x - a) / (b - a)
     z = np.clip(z, 0, 1)
 
     # Evaluate the regularized incomplete beta function
-    F = betainc(q, p, z)
+    F = np.zeros((n,N))
+    for i in range(n):
+       F[i,:] = betainc(q[i], p[i], z[i,:])
+
+    if n == 1 and x.shape[0] == 1:
+        F = F.flatten()
 
     return F
 
@@ -115,39 +165,42 @@ def inv(F, a, b, q, p):
     x : ndarray
         Quantile values corresponding to input probabilities F
     '''
-    F = np.asarray(F, dtype=float)
-    
-    # Check that a < b (valid interval)
-    if b <= a:
-        raise ValueError(f'beta_inv: a = {a}, b = {b} → a must be less than b')
-    
-    # Check that F values are valid probabilities
-    if np.any((F < 0) | (F > 1)):
-        raise ValueError('beta_inv: F must be between 0 and 1')
 
-    # Compute inverse of regularized incomplete beta function
-    z = betaincinv(q, p, F)
+    _, a, b, q, p, n, _ = _ppp_(0, a, b, q, p)
 
-    # Rescale from [0, 1] to [a, b]
-    x = a + z * (b - a)
+    F = np.atleast_2d(F).astype(float)
+    F = np.clip(F, np.finfo(float).eps, 1 - np.finfo(float).eps)
+    N = F.shape[1]    
+
+    x = np.zeros((n,N)) 
+
+    for i in range(n): 
+        # Compute inverse of regularized incomplete beta function
+        z = betaincinv(q[i], p[i], F[i,:])
+
+        # Rescale from [0, 1] to [a, b]
+        x[i,:] = a[i] + z * (b[i] - a[i])
+
+    if n == 1 and F.shape[0] == 1:
+        x = x.flatten()
 
     return x
 
 
-def rnd(a, b, q, p, N, R=None):
+def rnd(a, b, q, p, N, R=None, seed=None):
     '''
     beta.rnd
-    Generate N observations of correlated (or uncorrelated) beta random variables.
+    Generate N observations of n correlated (or uncorrelated) beta random var's
 
     INPUT:
-        a : float or array_like
-            Lower bound(s) of the distribution. If array, shape (n,) for n variables.
-        b : float or array_like
-            Upper bound(s) of the distribution. If array, shape (n,) for n variables.
+        a : float or array_like (n,)
+            Lower bound(s) of the distribution. shape (n,) for n random variables
+        b : float or array_like (n,)
+            Upper bound(s) of the distribution. shape (n,) for n random variables
         q : float or array_like
-            First shape parameter(s). If array, shape (n,) for n variables.
+            First shape parameter(s). shape (n,) for n random variables
         p : float or array_like
-            Second shape parameter(s). If array, shape (n,) for n variables.
+            Second shape parameter(s). shape (n,) for n random variables
         N : int
             Number of observations (samples) to generate.
         R : ndarray, optional
@@ -155,7 +208,7 @@ def rnd(a, b, q, p, N, R=None):
             If None, defaults to identity matrix (uncorrelated samples).
 
     OUTPUT:
-        x : ndarray
+        X : ndarray
             Shape (n, N) array of correlated beta random samples.
             Each row corresponds to one random variable.
             Each column corresponds to one observation.
@@ -179,69 +232,11 @@ def rnd(a, b, q, p, N, R=None):
             R = np.array([[1.0, 0.7], [0.7, 1.0]])
             x = rnd(a, b, q, p, N=1000, R=R)
     '''
-    
-    # Convert inputs to arrays
-    a = np.atleast_1d(a).astype(float) # Note: we must convert inputs to arrays. 
-    b = np.atleast_1d(b).astype(float) # MATLAB implicitly handles scalars vs arrays. Python does not.
-    q = np.atleast_1d(q).astype(float)
-    p = np.atleast_1d(p).astype(float)
-    
-    # Determine number of random variables
-    n = len(a)
-    
 
-    # -------------------------------------- Input Validations:
-    # Validate that all parameter arrays have the same length
-    if not (len(b) == n and len(q) == n and len(p) == n):
-        raise ValueError(f"All parameter arrays must have the same length. "
-                        f"Got a:{len(a)}, b:{len(b)}, q:{len(q)}, p:{len(p)}")
-    
-    if np.any(b <= a):
-        raise ValueError("beta_rnd: all b values must be greater than corresponding a values")
-    if np.any(q <= 0):
-        raise ValueError("beta_rnd: q must be positive")
-    if np.any(p <= 0):
-        raise ValueError("beta_rnd: p must be positive")
-    
-    # If no correlation matrix provided, default to identity matrix
-    # Identity matrix R = I means all variables are independent (correlation = 0)
-    if R is None:
-        R = np.eye(n) # In
-    
-    # Convert R to array and validate its properties
-    R = np.asarray(R)
-    if R.shape != (n, n):
-        raise ValueError(f"Correlation matrix R must b square {n}×{n}, got {R.shape}")
-    
-    if not np.allclose(np.diag(R), 1.0): # diagonals must be 1s
-        raise ValueError("corr_beta_rnd: diagonal of R must equal 1")
-    
-    if np.any(np.abs(R) > 1): # all elements must be [-1, 1] i.e valid correlations
-        raise ValueError("corr_beta_rnd: R values must be between -1 and 1")
-    # # -------------------------------------- End Input Validations
-    
-    # Eigenvalue decomposition of correlation matrix: R = V @ Λ @ V^T
-    #   eVec (V): matrix of eigenvectors (n×n)
-    #   eVal (Λ): array of eigenvalues (length n)
-    eVal, eVec = np.linalg.eig(R)
-    
-    if np.any(eVal < 0):
-        raise ValueError("corr_beta_rnd: R must be positive definite")
-    
-    # Generate independent standard normal samples: Z ~ N(0, I)
-    Z = np.random.randn(n, N) 
-    
-    # Apply correlation structure
-    # Y = V @ sqrt(Λ) @ Z, so Y ~ N(0, R)
-    #   = eVec @ sqrt(eVal) @ Z
-    Y = eVec @ np.diag(np.sqrt(eVal)) @ Z
-    
-    # Transform to uniform [0,1] via standard normal CDF, preserving correlation
-    U = norm.cdf(Y)
-    
-    # Transform each variable to its beta distribution via inverse CDF
-    x = np.zeros((n, N))
-    for i in range(n):
-        x[i, :] = inv(U[i, :], a[i], b[i], q[i], p[i])
-    
-    return x
+    _, a, b, q, p, n, _ = _ppp_(0, a, b, q, p)
+   
+    _, _, U = correlated_rvs(R,n,N,seed)
+
+    X = inv( U, a, b, q, p )
+       
+    return X

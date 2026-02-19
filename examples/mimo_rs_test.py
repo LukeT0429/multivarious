@@ -1,8 +1,8 @@
-#! /usr/bin/python3 -i 
+#! /usr/bin/env -S python3 -i
 
 import numpy as np
 import matplotlib.pyplot as plt
-from multivarious.opt import mimo_rs
+from multivarious.fit import mimo_rs
 from multivarious.rvs import lognormal 
 
 

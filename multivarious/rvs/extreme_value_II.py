@@ -3,6 +3,53 @@
 
 import numpy as np
 
+from multivarious.utl.correlated_rvs import correlated_rvs
+
+
+# generic pre processing of parameters (ppp) 
+
+def _ppp_(x, m, s, k):
+    '''
+    Validate and preprocess input parameters for consistency and correctness.
+
+    INPUTS:
+        x : array_like
+            Evaluation points
+        a : float
+            Minimum of the distribution
+        b : float
+            Maximum of the distribution (must be > a)
+        q : float
+            First shape parameter
+        p : float
+            Second shape parameter
+    ''' 
+
+    # Convert inputs to arrays
+    # Python does not implicitly handle scalars as arrays. 
+    x = np.atleast_1d(x).astype(float)
+
+    m = np.atleast_1d(m).reshape(-1,1).astype(float)
+    s = np.atleast_1d(s).reshape(-1,1).astype(float)
+    k = np.atleast_1d(k).astype(float)
+    n = len(m)   
+    N = len(x)   
+        
+    # Validate parameter dimensions 
+    if not (len(m) == n and len(s) == n and len(k) == n):
+        raise ValueError(f"All parameter arrays must have the same length. "
+                        f"Got m:{len(m)}, s:{len(s)}, k:{len(k)}")
+
+   # Validate parameter values 
+    if np.any(m <= 0):
+        raise ValueError("extreme_value_II: m must be > 0")
+    if np.any(s <= 0):
+        raise ValueError("extreme_value_II: s must be > 0")
+    if np.any(k <= 0):
+        raise ValueError("extreme_value_II: k must be > 0")
+
+    return x, m, s, k, n, N
+
 
 def pdf(x, m, s, k):
     '''
@@ -10,7 +57,7 @@ def pdf(x, m, s, k):
     
     Computes the PDF of the Extreme Value Type II (Fréchet) distribution.
     
-    Parameters:
+    INPUTS:
         x : array_like
             Evaluation points
         m : float
@@ -20,36 +67,36 @@ def pdf(x, m, s, k):
         k : float
             Shape parameter
     
-    Returns:
+    OUTPUTS:
         f : ndarray
             PDF values at each point in x
     '''
-    x = np.asarray(x, dtype=float)
+
+    x, m, s, k, n, N = _ppp_(x, m, s, k)
     
-    # Check parameter validity
-    if s <= 0:
-        raise ValueError(f"extII_pdf: s = {s}, must be > 0")
+    f = np.zeros((n,N))  # Initialize PDF as zeros
     
-    # Initialize PDF as zeros
-    f = np.zeros_like(x)
+    for i in range(n): 
+        mask = x > m[i]  # Compute only for x > m
+        z = (x[mask] - m[i]) / s[i]
+        f[i,mask] = (k[i] / s[i]) * z**(-1 - k[i]) * np.exp(-z**(-k[i]))
     
-    # Only compute for x > m
-    valid = x > m
-    z = (x[valid] - m) / s
-    f[valid] = (k / s) * z**(-1 - k) * np.exp(-z**(-k))
+    if n == 1 and f.shape[0] == 1:
+         f = f.flatten()
     
     return f
 
 
-def cdf(x, m, s, k):
+def cdf(x, params ):
     '''
     extreme_value_II.cdf
     
     Computes the CDF of the Extreme Value Type II (Fréchet) distribution.
     
-    Parameters:
+    INPUTS:
         x : array_like
             Evaluation points
+        params : array_like  [ m , s , k ] 
         m : float
             Location parameter (lower bound)
         s : float
@@ -57,35 +104,36 @@ def cdf(x, m, s, k):
         k : float
             Shape parameter
     
-    Returns:
+    OUTPUTS:
         F : ndarray
             CDF values at each point in x
     '''
-    x = np.asarray(x, dtype=float)
-    
-    # Check parameter validity
-    if s <= 0:
-        raise ValueError(f"extII_cdf: s = {s}, must be > 0")
-    
-    # Initialize CDF as zeros
-    F = np.zeros_like(x)
+    m, s, k = params
+
+    x, m, s, k, n, N = _ppp_(x, m, s, k)
+
+    F = np.zeros((n,N))  # Initialize PDF as zeros
     
     # Only compute for x > m
-    valid = x > m
-    z = (x[valid] - m) / s
-    F[valid] = np.exp(-z**(-k))
+    for i in range(n): 
+        mask = x > m[i]  # Compute only for x > m
+        z = (x[mask] - m[i]) / s[i]
+        F[i,mask] = np.exp(-z**(-k[i]))
+    
+    if n == 1 and F.shape[0] == 1:
+         F = F.flatten()
     
     return F
 
 
-def inv(P, m, s, k):
+def inv(F, m, s, k):
     '''
     extreme_value_II.inv
     
     Computes the inverse CDF (quantile function) of the Extreme Value Type II distribution.
     
-    Parameters:
-        P : array_like
+    INFUTS:
+        F : array_like
             Probability values (must be in (0, 1))
         m : float
             Location parameter
@@ -94,56 +142,57 @@ def inv(P, m, s, k):
         k : float
             Shape parameter
     
-    Returns:
+    OUTPUTS:
         x : ndarray
-            Quantile values corresponding to probabilities P
+            Quantile values corresponding to probabilities F
     '''
-    P = np.asarray(P, dtype=float)
+
+    _, m, s, k, n, _ = _ppp_(0, m, s, k)
+
+
+    F = np.atleast_2d(F).astype(float)
+    F = np.clip(F, np.finfo(float).eps, 1 - np.finfo(float).eps)
+    N = F.shape[1]    
+
+    x = np.zeros((n,N))
+
+    # Inverse transform: x = m + s * (-log(u))^(-1/k)
+    # Transform each variable to its extreme type II  distribution value
+    for i in range(n):
+        x[i,:] = m[i] + s[i] * (-np.log(F[i,:]))**(-1 / k[i])
     
-    # Check parameter validity
-    if s <= 0:
-        raise ValueError(f"extII_inv: s = {s}, must be > 0")
-    
-    # Clip probabilities to avoid log(0) or log(1)
-    eps = np.finfo(float).eps
-    P = np.clip(P, eps, 1 - eps)
-    
-    # Inverse CDF formula
-    x = m + s * (-np.log(P))**(-1 / k)
+    if n == 1 and x.shape[0] == 1:
+         x = x.flatten()
     
     return x
 
 
-def rnd(m, s, k, r, c):
+def rnd(m, s, k, N, R=None, seed=None):
     '''
     extreme_value_II.rnd
     
     Generate random samples from Extreme Value Type II (Fréchet) distribution.
     
-    Parameters:
-        m : float
+    INPUTS:
+        m : float (n,)
             Location parameter
-        s : float
+        s : float (n,)
             Scale parameter (must be > 0)
-        k : float
+        k : float (n,)
             Shape parameter
-        r : int
-            Number of rows
-        c : int
-            Number of columns
+        N : int
+            Number of observations of each variable
+        R  : float (n,n) optional
+             correlation matrix
     
-    Returns:
-        x : ndarray
-            Shape (r, c) array of random samples
+    OUTPUTS:
+        X : ndarray
+            Shape (n, N) array of random samples
     '''
-    # Check parameter validity
-    if s <= 0:
-        raise ValueError(f"extII_rnd: s = {s}, must be > 0")
+    _, m, s, k, n, _ = _ppp_(0, m, s, k)
+
+    _, _, U = correlated_rvs(R, n, N, seed)
+
+    X = inv(U, m, s, k)
     
-    # Generate standard uniform [0,1]
-    u = np.random.rand(r, c)
-    
-    # Inverse transform: x = m + s * (-log(u))^(-1/k)
-    x = m + s * (-np.log(u))**(-1 / k)
-    
-    return x
+    return X

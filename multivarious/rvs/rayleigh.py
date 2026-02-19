@@ -1,160 +1,204 @@
+## rayleigh distribution
+# github.com/hpgavin/multivarious ... rvs/rayleigh
+
 import numpy as np
 
-def pdf(X, muX):
-    '''
-    rayleigh.pdf
+from multivarious.utl.correlated_rvs import correlated_rvs
 
-    Computes the PDF of the Rayleigh distribution using the mean parameter muX.
 
-    Input:
-        X : array_like
+def _ppp_(x, meanX):
+    """
+    Validate and preprocess input parameters for consistency and correctness.
+
+    INPUTS:
+        x : array_like
             Evaluation points
-        muX : float
-            Mean of the Rayleigh distribution (must be > 0)
+        meanX : float or array_like
+            Mean(s) of the Rayleigh distribution (must be > 0)
 
-    Output:
-        f : ndarray
-            PDF values at each point in X
+    OUTPUTS:
+        x : ndarray
+            Evaluation points as array
+        meanX : ndarray
+            Means as column array
+        modeX : ndarray
+            Mode parameters (σ) as column array
+        n : int
+            Number of random variables
+    """ 
 
-    Reference:
-    https://en.wikipedia.org/wiki/Rayleigh_distribution
-    '''
-
-    X = np.asarray(X, dtype=float)
-
-    # Convert mean to mode: modeX = muX * sqrt(2 / pi)
-    modeX = muX * np.sqrt(2 / np.pi)
+    # Convert inputs to arrays
+    # Python does not implicitly handle scalars as arrays. 
+    x = np.atleast_1d(x).astype(float)
+    meanX = np.atleast_1d(meanX).reshape(-1,1).astype(float)
+    n = len(meanX)   
+        
+    # Validate parameter values 
+    if np.any(meanX <= 0):
+        raise ValueError("rayleigh: all meanX values must be greater than zero")
 
     # Replace non-positive values to prevent invalid evaluation
-    X = np.where(X <= 0, 0.01, X)
+    x[x <= 0] = np.sum(meanX)/(n*1e3)
+
+    # Convert mean meanX to modeX using Rayleigh identity
+    modeX = meanX * np.sqrt(2 / np.pi)
+
+    return x, meanX, modeX, n
+
+
+def pdf(x, meanX):
+    """
+    rayleigh.pdf
+
+    Computes the PDF of the Rayleigh distribution using the mean parameter meanX.
+
+    INPUTS:
+        x : array_like
+            Evaluation points (must be ≥ 0)
+        meanX : float or array_like, shape (n,)
+            Mean(s) of the Rayleigh distribution (must be > 0)
+
+    OUTPUTS:
+        f : ndarray, shape (n, N)
+            PDF values at each point in x for each of n random variables
+
+    Notes
+    -----
+    The Rayleigh distribution with scale parameter σ (mode) has:
+    f(x) = (x/σ²) exp(-x²/(2σ²)) for x ≥ 0
+    where σ = mean · √(2/π)
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Rayleigh_distribution
+    """
+
+    x, meanX, modeX, n = _ppp_(x, meanX)
 
     # Apply the Rayleigh PDF formula
-    f = (X / modeX**2) * np.exp(-0.5 * (X / modeX)**2)
+    f = (x / modeX**2) * np.exp(-0.5 * (x / modeX)**2)
+
+    if n == 1 and f.shape[0] == 1:
+        f = f.flatten()
 
     return f
 
 
-def cdf(X, muX):
-    '''
+def cdf(x, meanX):
+    """
     rayleigh.cdf
-    Computes the CDF of the Rayleigh distribution using the mean parameter muX.
-
-    Input:
-        X : array_like
-            Evaluation points
-        muX : float
-            Mean of the Rayleigh distribution (must be > 0)
-
-    Output:
-        F : ndarray
-            CDF values at each point in X
-
-    Reference:
-    https://en.wikipedia.org/wiki/Rayleigh_distribution
-    '''
-
-    X = np.asarray(X, dtype=float).copy()
     
-    # Replace X <= 0 with small positive number (to match MATLAB behavior)
-    X[X <= 0] = 0.01
+    Computes the CDF of the Rayleigh distribution using the mean parameter meanX.
 
-    # Convert mean muX to modeX using Rayleigh identity
-    modeX = muX * np.sqrt(2 / np.pi)
+    INPUTS:
+        x : array_like
+            Evaluation points (must be ≥ 0)
+        meanX : float or array_like, shape (n,)
+            Mean(s) of the Rayleigh distribution (must be > 0)
+
+    OUTPUTS:
+        F : ndarray, shape (n, N)
+            CDF values at each point in x for each of n random variables
+
+    Notes
+    -----
+    F(x) = 1 - exp(-x²/(2σ²)) for x ≥ 0
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Rayleigh_distribution
+    """
+
+    x, meanX, modeX, n = _ppp_(x, meanX)
 
     # Apply the Rayleigh CDF formula
-    F = 1.0 - np.exp(-0.5 * (X / modeX)**2)
+    F = 1.0 - np.exp(-0.5 * (x / modeX)**2)
+
+    if n == 1 and F.shape[0] == 1:
+        F = F.flatten()
 
     return F
 
 
-def inv(P, muX):
-    '''
+def inv(F, meanX):
+    """
     rayleigh.inv
 
     Computes the inverse CDF (quantile function) of the Rayleigh distribution
-    using the mean parameter muX.
+    using the mean parameter meanX.
 
-    INPUT:
-        P : array_like
-            Non-exceedance probabilities (0 ≤ P ≤ 1)
-        muX : float
-            Mean of the Rayleigh distribution (must be > 0)
+    INPUTS:
+        F : array_like
+            Non-exceedance probabilities (0 ≤ F ≤ 1)
+        meanX : float or array_like, shape (n,)
+            Mean(s) of the Rayleigh distribution (must be > 0)
 
-    OUTPUT:
+    OUTPUTS:
         x : ndarray
-            Quantile values corresponding to probabilities P
+            Quantile values corresponding to probabilities F
 
-    Reference:
+    Notes
+    -----
+    x = σ√(-2 ln(1-F)) where σ = mean · √(2/π)
+
+    Reference
+    ---------
     https://en.wikipedia.org/wiki/Rayleigh_distribution
-    '''
-    P = np.asarray(P, dtype=float).copy()
+    """
 
-    # Clamp values: ensure P stays in [0, 1] just like MATLAB does
-    P[P <= 0] = 0.0
-    P[P >= 1] = 1.0
+    _, meanX, modeX, n = _ppp_(0, meanX)
 
-    # Convert mean to mode using mu = mode * sqrt(pi / 2)
-    modeX = muX * np.sqrt(2 / np.pi)
+    F = np.atleast_2d(F).astype(float)
+    F = np.clip(F, np.finfo(float).eps, 1 - np.finfo(float).eps)
+    N = F.shape[1]    
 
     # Compute the inverse CDF formula
-    x = modeX * np.sqrt(-2.0 * np.log(1 - P))
+    x = modeX * np.sqrt(-2.0 * np.log(1 - F))
+
+    if n == 1 and x.shape[0] == 1:
+        x = x.flatten()
 
     return x
 
 
-def rnd(muX, r, c=None):
-    '''
+def rnd(meanX, N, R=None, seed=None):
+    """
     rayleigh.rnd
 
     Generates random samples from the Rayleigh distribution using the mean
-    parameter muX. Samples can be generated either by passing a matrix of
-    uniform random numbers or by specifying the output dimensions.
+    parameter meanX.
 
-    Input:
-        muX : float
-            Mean of the Rayleigh distribution (must be > 0)
-        r : int or ndarray
-            If int, number of rows in the output; if ndarray, a matrix of
-            uniform(0,1) random values
-        c : int, optional
-            Number of columns in the output (used only if r is int)
+    INPUTS:
+        meanX : float or array_like, shape (n,)
+            Mean(s) of the Rayleigh distribution (must be > 0)
+        N : int
+            Number of observations per random variable
+        R : ndarray, shape (n, n), optional
+            Correlation matrix for generating correlated samples.
+            If None, generates uncorrelated samples.
+        seed : int, optional
+            Random seed for reproducibility
 
-    Output:
-        x : ndarray
-            Random samples drawn from the Rayleigh distribution
+    OUTPUTS:
+        X : ndarray, shape (n, N) or shape (N,) if n=1
+            Random samples drawn from the Rayleigh distribution.
+            Each row corresponds to one random variable.
+            Each column corresponds to one sample.
+
+    Notes
+    -----
+    Uses inverse transform method: x = σ√(-2 ln(u)) where u ~ Uniform(0,1)
 
     Reference
-    ----------
+    ---------
     https://en.wikipedia.org/wiki/Rayleigh_distribution
-    '''
+    """
 
+    _, meanX, modeX, n = _ppp_(0, meanX)
 
-    if np.any(muX <= 0) or np.any(np.isinf(muX)):
-        raise ValueError("rayleigh_rnd: muX must be greater than zero")
+    _, _, U = correlated_rvs(R, n, N, seed)
 
-    # Convert mean to mode
-    modeX = muX * np.sqrt(2 / np.pi)
-
-    # Case (1): r is already a matrix of uniform random numbers
-    if c is None and isinstance(r, np.ndarray):
-        u = r
-        r_rows, c_cols = u.shape
-
-    # Case (2): Generate uniform samples with shape (r, c)
-    elif c is not None:
-        u = np.random.rand(r, c)
-        r_rows, c_cols = r, c
-
-    else:
-        raise ValueError("rayleigh_rnd: Either provide a matrix (r) or integers (r, c)")
-
-    # Broadcast modeX if needed
-    if np.isscalar(modeX):
-        modeX = modeX * np.ones((r_rows, c_cols))
-        
     # Inverse transform sampling
-    x = modeX * np.sqrt(-2.0 * np.log(u))
+    X = inv(U, meanX) 
 
-    return x
-
-
+    return X

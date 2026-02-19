@@ -1,141 +1,224 @@
+## Student's t distribution
+# github.com/hpgavin/multivarious ... rvs/students_t
+
 import numpy as np
-from scipy.special import beta as beta_func, betaincinv
+import math
+from scipy.special import gamma
+from scipy.special import betainc, betaincinv
+
+from multivarious.utl.correlated_rvs import correlated_rvs
+
+
+def _ppp_(t, k):
+    """
+    Validate and preprocess input parameters for consistency and correctness.
+
+    INPUTS:
+        t : array_like
+            Evaluation points
+        k : int or float or array_like
+            Degrees of freedom (must be > 0)
+
+    OUTPUTS:
+        t : ndarray
+            Evaluation points as array
+        k : ndarray
+            Degrees of freedom as column array (integer type)
+        n : int
+            Number of random variables
+    """ 
+
+    # Convert inputs to arrays
+    # Python does not implicitly handle scalars as arrays. 
+    t = np.atleast_1d(t).astype(float)
+    k = np.atleast_1d(k).reshape(-1,1).astype(int)
+    n = len(k)   
+    N = len(t)
+        
+    # Validate parameter values 
+    if np.any(k <= 0):
+        raise ValueError("students_t: k must be > 0")
+
+    return t, k, n, N
+
 
 def pdf(t, k):
-    '''
+    """
     students_t.pdf
 
     Computes the PDF of the Student's t-distribution with k degrees of freedom.
 
-    Parameters:
+    INPUTS:
         t : array_like
             Evaluation points
-        k : int or float
+        k : int or float or array_like, shape (n,)
             Degrees of freedom (must be > 0)
-    Output:
-        f : ndarray
-            PDF values at each point in t
-
-    Reference:
-    https://en.wikipedia.org/wiki/Student%27s_t-distribution
-    '''
     
-    t = np.asarray(t, dtype=float)
+    OUTPUTS:
+        f : ndarray, shape (n, N)
+            PDF values at each point in t for each of n random variables
 
-    # Compute the PDF using the known closed-form
-    f = (np.exp(-(k + 1) * np.log(1 + (t ** 2) / k) / 2)) / (np.sqrt(k) * beta_func(k / 2, 0.5))
+    Notes
+    -----
+    f(t) = Γ((k+1)/2) / (√(πk) Γ(k/2)) * (1 + t²/k)^(-(k+1)/2)
+
+    Reference
+    ---------
+    https://en.wikipedia.org/wiki/Student%27s_t-distribution
+    """
+    
+    t, k, n, _ = _ppp_(t, k)
+
+    numerator = gamma((k + 1) / 2)
+    denominator = np.sqrt(k * np.pi) * gamma(k / 2)
+    power = -(k + 1) / 2
+    f = (numerator / denominator) * (1 + (t**2) / k) ** power
+
+    if n == 1 and f.shape[0] == 1:
+        f = f.flatten()
 
     return f
 
+#   # Compute the PDF using the known closed-form
+#   f = (np.exp(-(k + 1) * np.log(1 + (t ** 2) / k) / 2)) / (np.sqrt(k) * beta_func(k / 2, 0.5))
+
 def cdf(t, k):
-    '''
+    """
     students_t.cdf
 
     Computes the CDF of the Student's t-distribution with k degrees of freedom.
     Handles k = 1 and k = 2 analytically, and uses recurrence relations
-    for integer k > 2 to match the MATLAB implementation.
+    for integer k > 2.
 
-    Parameters:
+    INPUTS:
         t : array_like
             Evaluation points
-        k : int or float
+        k : int or float or array_like, shape (n,)
             Degrees of freedom (must be > 0)
 
-    Output:
-        F : ndarray
-            CDF values at each point in t
+    OUTPUTS:
+        F : ndarray, shape (n, N)
+            CDF values at each point in t for each of n random variables
 
-    Reference:
+    Notes
+    -----
+    For k=1: Cauchy distribution, F(t) = 1/2 + arctan(t)/π
+    For k=2: F(t) = 1/2 + t/(2√(2+t²))
+    For k>2: Uses recurrence relation
+
+    Reference
+    ---------
     https://en.wikipedia.org/wiki/Student%27s_t-distribution
-    '''
-    t = np.asarray(t, dtype=float)
+    """
+    
+    t, k, n, N = _ppp_(t, k)
 
-    if k == 1:
-        # Cauchy distribution
-        return 0.5 + np.arctan(t) / np.pi
+    F = np.zeros((n,N))
 
-    elif k == 2:
-        return 0.5 + t / (2 * np.sqrt(2 + t**2))
+    for i in range(n): 
 
-    else:
-        ts = t / np.sqrt(k)
-        ttf = 1 / (1 + ts**2)
+        a = k[i] / 2.0
+        x = k[i] / (k[i] + t**2)
 
-        u = np.ones_like(ts, dtype=float)
-        s = np.ones_like(ts, dtype=float)
+        F[i,t == 0] = 0.5
 
-        if k % 2 == 1:  # odd degrees of freedom
-            m = (k - 1) // 2
-            for ii in range(2, m + 1):
-                u = u * (1 - 1 / (2 * ii - 1)) * ttf
-                s = s + u
-            return 0.5 + (ts * ttf * s + np.arctan(ts)) / np.pi
+        mask = t > 0
+        F[i,mask] = 1 - 0.5 * betainc(a, 0.5, x[mask])
 
-        else:  # even degrees of freedom
-            m = k // 2
-            for ii in range(1, m):
-                u = u * (1 - 1 / (2 * ii)) * ttf
-                s = s + u
-            return 0.5 + (ts * np.sqrt(ttf) * s) / 2.0
+        mask = t < 0
+        F[i,mask] =     0.5 * betainc(a, 0.5, x[mask])
 
-def inv(p, k):
-    '''
+    if n == 1 and F.shape[0] == 1:
+        F = F.flatten()
+
+    return F
+
+def inv(F, k):
+    """
     students_t.inv
 
     Computes the inverse CDF (quantile function) of the Student's t-distribution
     with k degrees of freedom, using the inverse incomplete beta function.
 
-    Input:
-        p : array_like
+    INPUTS:
+        F : array_like
             Probability values (must be in [0, 1])
-        k : int or float
+        k : int or float or array_like, shape (n,)
             Degrees of freedom (must be > 0)
 
-    Output:
+    OUTPUTS:
         x : ndarray
-            Quantile values corresponding to probabilities p
+            Quantile values corresponding to probabilities F
 
-    Reference:
+    Notes
+    -----
+    Uses relationship with incomplete beta function.
+
+    Reference
+    ---------
     https://en.wikipedia.org/wiki/Student%27s_t-distribution
-    '''
-    p = np.asarray(p)
+    """
     
+    _, k, n, _ = _ppp_(0, k)
+
+    F = np.atleast_2d(F).astype(float)
+    F = np.clip(F, np.finfo(float).eps, 1 - np.finfo(float).eps)
+    N = F.shape[1]    
+
+    print('F shape : ', F.shape )
+
     # Compute the inverse CDF using the relationship with the incomplete beta function
     # betaincinv(a, b, y) finds x such that betainc(a, b, x) = y
-    z = betaincinv(k / 2.0, 0.5, 2 * np.minimum(p, 1 - p))
+    z = betaincinv(k / 2.0, 0.5, 2 * np.minimum(F, 1 - F))
     
     # Convert from beta quantile to t quantile
-    x = np.sign(p - 0.5) * np.sqrt(k * (1 / z - 1))
+    x = np.sign(F - 0.5) * np.sqrt(k * (1 / z - 1))
+
+    print('x shape : ', x.shape )
+    print('n : ', n)
+
+    if n == 1 and x.shape[0] == 1:
+        x = x.flatten()
 
     return x
 
 
-def rnd(k, size=(1,), seed=None): # New
-    '''
+def rnd(k, N, R=None, seed=None): 
+    """
     students_t.rnd
 
     Generate random samples from the Student's t-distribution with k degrees of freedom.
 
-    Parameters:
-        k : int or float
+    INPUTS:
+        k : int or float or array_like, shape (n,)
             Degrees of freedom (must be > 0)
-        size : tuple, optional
-            Output shape (e.g., (r, c)); default is (1,)
-        seed : int or np.random.Generator, optional
-            Random seed or existing Generator for reproducibility
+        N : int
+            Number of observations per random variable
+        R : ndarray, shape (n, n), optional
+            Correlation matrix for generating correlated samples.
+            If None, generates uncorrelated samples.
+        seed : int, optional
+            Random seed for reproducibility
 
-    Output:
-        x : ndarray
-            Array of shape `size` containing t-distributed random samples
+    OUTPUTS:
+        X : ndarray, shape (n, N) or shape (N,) if n=1
+            Random samples from Student's t-distribution.
+            Each row corresponds to one random variable.
+            Each column corresponds to one sample.
 
-    Reference:
+    Notes
+    -----
+    Uses inverse transform method with correlated uniform variates.
+
+    Reference
+    ---------
     https://en.wikipedia.org/wiki/Student%27s_t-distribution
-    '''
-    if isinstance(seed, (int, type(None))):
-        rng = np.random.default_rng(seed)
-    else:
-        rng = seed  # assume user passed Generator
+    """
 
-    # Generate uniform samples and use inverse CDF
-    u = rng.random(size)
-    return inv(u, k)
+    _, k, n, _ = _ppp_(0, k)
+
+    _, _, U = correlated_rvs(R, n, N, seed)
+
+    X = inv(U, k) 
+
+    return X

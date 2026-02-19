@@ -1,18 +1,47 @@
 import numpy as np
-from scipy.special import factorial
+from scipy.special import gammaln, gammaincc
+
+from multivarious.utl.correlated_rvs import correlated_rvs
+
+def _ppp_(k, t, T): 
+    '''
+    Validate and preprocess input parameters for consistency and correctness."
+
+    INPUTS:
+        k : array_like or scalar
+            Number of observed events (integer ≥ 0)
+        t : scalar float positive valued
+            The duration of time for the occurance of events
+        T : scalar float positive valued
+            mean return period of events 
+    '''
+
+    k = np.atleast_1d(np.round(k)).reshape(1, -1).astype(int)
+    k = np.where(k < 0, 0, k)  # Clip negative values to 0
+    t = np.atleast_1d(t).reshape(-1, 1).astype(float)
+    T = np.atleast_1d(T).reshape(-1, 1).astype(float)
+    n = len(T)  
+
+    if not ( (len(t) == n or len(t) == 1) and (len(T) == n or len(T) == 1)):
+        raise ValueError(f"T and t arrays must have the same length. "
+                         f"Got t:{len(t)}, T:{len(T)}")
+
+    return k, t, T, n
 
 
-def pmf(n, L):
+def pmf(k, t, T):
     '''
     poisson.pmf
 
     Computes the Probability Mass Function (PMF) of the Poisson distribution.
 
-    Parameters:
-        n : array_like or scalar
+    INPUTS:
+        k : array_like or scalar
             Number of observed events (integer ≥ 0)
-        L : float
-            Expected number of events (rate parameter λ)
+        t : scalar float positive valued
+            The duration of time for the occurance of events
+        T : scalar float positive valued
+            mean return period of events 
 
     Output:
         p : ndarray
@@ -25,28 +54,39 @@ def pmf(n, L):
     The Poisson distribution models the number of times an event occurs in a 
     fixed interval of time or space.
         * Events occur independently
-        * The average rate of occurrence is constant (λ events per interval)
+        * The mean return period of occurances is constant 
         * Two events can't happen at the exact same instant (events are discrete)
-        * λ (or sometimes L) = expected number of events in the interval.
+        * T = expected return period of events
+    https://en.wikipedia.org/wiki/Poisson_distribution#Evaluating_the_Poisson_distribution
     '''
-    n = np.asarray(n, dtype=int)
-    n = np.where(n < 0, 0, n)  # clip negative values to 0
 
-    p = (L ** n) / factorial(n) * np.exp(-L)
+    k, t, T, n = _ppp_(k, t, T)
+
+    r = t/T  # rates of each Poisson process "nu" or "lambda"
+
+#   p = (r ** n) / factorial(n) * np.exp(-r) # more round-off error
+
+    p = np.exp( k * np.log(r) - r - gammaln(k+1) ) # less round-off error
+
+    if n == 1 and p.shape[0] == 1:
+        p = p.flatten()
+
     return p
 
 
-def cdf(n, L):
+def cdf(k, params ):
     '''
     poisson.cdf
 
     Computes the Cumulative Distribution Function (CDF) of the Poisson distribution.
 
-    Parameters:
-        n : array_like or scalar
+    INPUTS:
+        k : array_like or scalar
             Number of observed events (integer ≥ 0)
-        L : float
-            Expected number of events (rate parameter λ)
+        t : scalar float positive valued
+            The duration of time for the occurance of events
+        T : scalar float positive valued
+            mean return period of events 
 
     Output:
         F : ndarray or float
@@ -54,66 +94,107 @@ def cdf(n, L):
 
     Reference:
     https://en.wikipedia.org/wiki/Poisson_distribution
+    https://en.wikipedia.org/wiki/Incomplete_gamma_function#Regularized_gamma_functions_and_Poisson_random_variables
+    https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.gammaincc.html
     '''
-    n = np.round(n).astype(int)            # Ensure n is integer-valued
-    n = np.atleast_1d(n)                   # Support scalar and array inputs
-    F = np.empty_like(n, dtype=float)      # Initialize result array
 
-    for i, ni in enumerate(n):
-        ks = np.arange(0, ni + 1)          # k = 0 to n
-        F[i] = np.sum((L**ks) / factorial(ks)) * np.exp(-L)
+    t, T = params
 
-    return F if F.size > 1 else F[0]        # Return scalar if input was scalar
-
-
-def rnd(T, r=None, c=None):
+    k, t, T, n = _ppp_(k, t, T)
+   
     '''
-    poisson.rnd
-
-    Generates random samples from the Poisson distribution using the
-    multiplicative (Knuth) algorithm.
-
-    Parameters:
-        T : float or ndarray
-            Return period (used to compute λ = 1/T)
-        r : int
-            Number of rows in the output
-        c : int
-            Number of columns in the output
-
-    Output:
-        x : ndarray of shape (r, c)
-            Random samples drawn from the Poisson distribution
-
-    Notes:
-    Uses the waiting time method (multiplicative) similar to Knuth's algorithm.
-    Reference:
-    https://en.wikipedia.org/wiki/Poisson_distribution#Generating_Poisson-distributed_random_variables
+    # more round-off error
+    F = np.zeros(n, len(k) )
+    for i, ki in enumerate(k):
+        k = np.arange(0, ki + 1)          # k = 0 to n
+        F[i] = np.sum( pmf( k, t, T ) ) 
     '''
-    # Infer r, c if not explicitly passed
-    if r is None or c is None:
-        if np.isscalar(T):
-            r, c = 1, 1
-        else:
-            r, c = np.asarray(T).shape
+    
+    # Regularized upper incomplete gamma function. less round-off error
+    F = gammaincc(k+1, (t/T))
 
-    # Validate T is scalar or matches shape
-    T = np.asarray(T)
-    if T.size != 1 and T.shape != (r, c):
-        raise ValueError("poisson_rnd: T must be scalar or of shape (r, c)")
+    if n == 1 and F.shape[0] == 1:
+        F = F.flatten()     # Return 1D array for a single rv
 
-    # Compute L = exp(-1/T)
-    L = np.exp(-1.0 / T)
+    if len(k) == 1:
+        F = F[0]            # Return scalar for a singe rv and a single k
+ 
+    return F
 
-    # Initialize output matrix
-    p = np.ones((r, c))                    # running product
-    x = np.zeros((r, c), dtype=int)        # counter
 
-    # Run multiplicative loop
-    active = p >= L
-    while np.any(active):
-        p[active] *= np.random.rand(np.sum(active))
-        x[active] += 1
-        active = p >= L
+def rnd(t, T, N, R=None, seed=None):
+    '''
+    Generate N samples of n correlated Poisson counts 
+    Correlation is applied across the n processes at each iteration and shared for all N samples.
+    
+    INPUTS:
+        t : scalar or array-like shape (n,)
+            Duration of observation for each process
+        T : scalar or array-like shape (n,)
+            Return period for each process (lambda = 1/T)
+        N : int
+            Number of samples per process
+        R : ndarray shape (n, n) or None
+            Correlation matrix among the n processes
+        seed : int or None
+            Random number generator seed
+    
+    OUTPUTS:
+        X : ndarray shape (n, N)
+            Poisson counts for each of n processes and each of N samples
+  
 
-    return x - 1
+    https://en.wikipedia.org/wiki/Poisson_distribution#Computational_methods
+
+    Poisson generator based upon the inversion by sequential search:
+
+    Devroye, Luc (1986). "Discrete Univariate Distributions".
+    Non-Uniform Random Variate Generation. New York, NY: Springer-Verlag.
+    pp. 485–553.
+    doi:10.1007/978-1-4613-8643-8_10. ISBN 978-1-4613-8645-2.
+
+    init:
+        Let x ← 0, p ← e−λ, s ← p.
+        Generate uniform random number u in [0,1].
+    while u > s do:
+        x ← x + 1.
+        p ← p × λ / x.
+        s ← s + p.
+    return x.
+    '''
+    _, t, T, n = _ppp_(0, t, T)
+    
+    L = (t/T).flatten()
+
+    exp_tT = np.exp(-L)  # shape (n,)
+    
+    X = np.zeros((n, N), dtype=int)
+
+    # N observations of n correlated standard uniform variables 
+    _, _, U = correlated_rvs(R, n, N, seed)
+
+    for j in range(N):
+        x = np.zeros(n, dtype=int)
+        p = exp_tT.copy() # !!
+        s = p.copy()      # !!
+        
+        active_idx = U[:,j] > s
+        iteration = 0
+
+        while np.any(active_idx) and  np.max(x) < 100:
+            x[active_idx] += 1
+            p[active_idx] *= L[active_idx] / x[active_idx]
+            s[active_idx] += p[active_idx]
+            active_idx = U[:, j] > s
+            iteration += 1
+
+        X[:, j] = x  
+
+        if iteration >= 100:
+            print(f"Warning: large iteration count at sample {j}")
+
+    if n == 1 and x.shape[0] == 1:
+        x = x.flatten()
+    
+    return X
+

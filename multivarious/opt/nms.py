@@ -1,14 +1,34 @@
-# nms.py
-# -----------------------------------------------------------------------------
-# Nelder-Mead Algorithm for Nonlinear Optimization
-# Depends on: opt_options(), avg_cov_func(), plot_opt_surface()
-# -----------------------------------------------------------------------------
-# 
-# updated ...
-# 2005-1-22, 2006-1-26, 2011-1-31, 2011-4-13, 2016-03-24, 2016-04-06,
-# 2019-02-23, 2019-03-21, 2019-11-22, 2020-01-17, 2021-01-19, 2024-04-03,
-# 2025-11-24
+"""
+nms.py
+-----------------------------------------------------------------------------
+Nelder-Mead Algorithm for Nonlinear Optimization
+Depends on: opt_options(), avg_cov_func(), plot_opt_surface()
+-----------------------------------------------------------------------------
 
+Nonlinear optimization with inequality constraints via the Nelder-Mead Simplex
+
+Minimizes f(v) such that g(v) < 0 and v_lb <= v_opt <= v_ub.
+- f is a scalar objective function
+- v is a vector of design variables
+- g is a vector of inequality constraints
+
+Reference:
+
+Nelder, J.A., and Mead, R., "A simplex method for function minimization,: 
+Computer Journal, 7(4) (1965): 308-313.
+
+William H. Press, Saul A. Teukolsky, William T. Vetterling, Brian P. Flannery, 
+Numerical Recipes in C 
+Cambridge University Press, (1992)
+
+H.P. Gavin, Civil & Environmental Eng'g, Duke Univ.
+Translation from MATLAB to Python, 2025-11-24
+
+updated ...
+2005-1-22, 2006-1-26, 2011-1-31, 2011-4-13, 2016-03-24, 2016-04-06,
+2019-02-23, 2019-03-21, 2019-11-22, 2020-01-17, 2021-01-19, 2024-04-03,
+2025-11-24
+"""
 
 import numpy as np
 from numpy.linalg import norm 
@@ -132,13 +152,11 @@ def nms(func, v_init, v_lb=None, v_ub=None, options_in=None, consts=1.0):
     # ----- analyze the initial guess -----
     f0, g0, u0, cJ, nAvg = avg_cov_func(func, u0, s0, s1, options, consts, BOX)
     function_evals += nAvg
-    if not np.isscalar(f0):
-        raise ValueError("Objective returned by func(v,consts) must be scalar.")
     g0 = np.atleast_1d(g0).astype(float).flatten()
     m = g0.size  # number of constraints
 
     if msg > 2:
-        f_min, f_max, ax = plot_opt_surface(func, u0, v_lb, v_ub, 
+        f_min, f_max, ax = plot_opt_surface(func, v_init, v_lb, v_ub, 
                                             options, consts, 1003)
 
     start_time = time.time()
@@ -204,14 +222,14 @@ def nms(func, v_init, v_lb=None, v_ub=None, options_in=None, consts=1.0):
     for i in range(n):
         xtx += f"   vertex {(i+2):1d} "
 
-    if msg:
-        print('\033[H\033[J', end='')  # Clear screen
+    # Print the initial simplex, objective and constraints
+    if msg > 1:
+#       print('\033[H\033[J', end='')  # Clear screen
         print(" ======================= NMS ============================")
         print(f" iteration                = {iteration:5d}   "
               f"{'*** feasible ***' if np.max(g_opt) <= tol_g else '!!! infeasible !!!'}")
         print(f" function evaluations     = {function_evals:5d} of {max_evals:5d}")
-        print(f" objective                = {f_opt:11.3e}")
-        if n < 10:
+        if n < 15:
             vv = s0[:, np.newaxis] + s1[:, np.newaxis] * simplex
             print(xtx)
             for j in range(n):
@@ -219,6 +237,7 @@ def nms(func, v_init, v_lb=None, v_ub=None, options_in=None, consts=1.0):
                 print(vstr)
             print(" f_A    = " + " ".join(f"{f:11.3e}" for f in f_all))
             print(" max(g) = " + " ".join(f"{g:11.3e}" for g in g_max))
+        print(f" objective                = {f_opt:12.4e}")
         print(" ======================= NMS ============================\n")
 
     # ============================ main loop ============================
@@ -365,7 +384,7 @@ def nms(func, v_init, v_lb=None, v_ub=None, options_in=None, consts=1.0):
                       [ f_opt, max_g, function_evals, cvg_v, cvg_f ] ])
 
         # ----- Display progress -----
-        if msg:
+        if msg > 1:
             elapsed = time.time() - start_time
             secs_left = int((max_evals - function_evals) * elapsed / function_evals)
             eta = (datetime.now() + timedelta(seconds=secs_left)).strftime('%H:%M:%S')
@@ -378,9 +397,7 @@ def nms(func, v_init, v_lb=None, v_ub=None, options_in=None, consts=1.0):
             print(f" function evaluations     = {function_evals:5d} of {max_evals:5d}"
                   f" ({100.0*function_evals/max_evals:4.1f}%)")
             print(f" e.t.a.                   = {eta} ")
-            print(f" objective                = {f_opt:11.3e}")
-
-            if n < 10:
+            if n < 15:
                 vv = (simplex - s0[:, np.newaxis]) / s1[:, np.newaxis]
                 print(xtx)
                 for j in range(n):
@@ -394,8 +411,10 @@ def nms(func, v_init, v_lb=None, v_ub=None, options_in=None, consts=1.0):
                 print(" variables             = " + " ".join(f"{v:11.3e}" for v in vv))
                 print(f" max constraint       = {np.max(g_opt):11.3e}")
 
-            print(f" objective convergence    = {cvg_f:11.4e}   tol_f = {tol_f:8.6f}")
+            print(f" objective                = {f_opt:11.4e}")
+            print(f" constraint               = {np.max(g_opt):11.4e}   tol_g = {tol_g:8.6f}")
             print(f" variable  convergence    = {cvg_v:11.4e}   tol_v = {tol_v:8.6f}")
+            print(f" objective convergence    = {cvg_f:11.4e}   tol_f = {tol_f:8.6f}")
             print(f" c.o.v. of F_A            = {cJ_all[0]:11.4e}")
             print(" ======================= NMS ============================\n")
 
@@ -445,16 +464,20 @@ def nms(func, v_init, v_lb=None, v_ub=None, options_in=None, consts=1.0):
 
     # final report
     if msg:
+        lambda_qp = None
         opt_report(v_init, v_opt, f_opt, g_opt, v_lb, v_ub, tol_v, tol_f, tol_g,
-                   start_time, function_evals, max_evals,
-                   feasible, converged, stalled )
+                   lambda_qp, start_time, function_evals, max_evals,
+                   find_feas, feasible, converged, stalled )
 
     return v_opt, f_opt, g_opt, cvg_hst, function_evals, iteration
 
 
 def cvg_metrics(simplex, fv, g0):
     '''
-    Compute consistent convergence metrics for ors, nms and sqp
+    Compute convergence metrics for nms, defined as:  
+    the ratio of (the difference between the best and worst vertices)
+    to (the average of the best and worst vertices) 
+    in terms of the vertices in the simplex and the objective function, f. 
     
     Parameters
     ----------    
@@ -482,8 +505,8 @@ def cvg_metrics(simplex, fv, g0):
     f0 = fv[0]
     fn = fv[n]
 
-    cvg_v = norm(un - u0) / (norm(un + u0)+1e-9)
-    cvg_f = norm(fn - f0) / (norm(fn + f0)+1e-9)
+    cvg_v = 2 * norm(un - u0) / (norm(un + u0)+1e-9)
+    cvg_f = 2 * norm(fn - f0) / (norm(fn + f0)+1e-9)
     max_g = max(g0)
 
     return cvg_v, cvg_f, max_g

@@ -3,84 +3,149 @@
 
 import numpy as np
 
-def pdf(x, param):
+from multivarious.utl.correlated_rvs import correlated_rvs
+
+
+def _ppp_(x, m, s, k):
+    '''
+    Validate and preprocess input parameters for consistency and correctness.
+
+    INPUTS:
+        x : array_like
+            Evaluation points
+        a : float
+            Minimum of the distribution
+        b : float
+            Maximum of the distribution (must be > a)
+        q : float
+            First shape parameter
+        p : float
+            Second shape parameter
+    ''' 
+
+    # Convert inputs to arrays
+    # Python does not implicitly handle scalars as arrays. 
+    x = np.atleast_1d(x).astype(float)
+
+    m = np.atleast_1d(m).reshape(-1,1).astype(float)
+    s = np.atleast_1d(s).reshape(-1,1).astype(float)
+    k = np.atleast_1d(k).reshape(-1,1).astype(float)
+    n = len(m)   
+        
+    # Validate parameter dimensions 
+    if not (len(m) == n and len(s) == n and len(k) == n):
+        raise ValueError(f"All parameter arrays must have the same length. "
+                        f"Got m:{len(m)}, s:{len(s)}, k:{len(k)}")
+
+    return x, m, s, k, n
+
+
+def pdf(x, m, s, k):
     '''
     gev.pdf
 
     Compute the PDF of the generalized extreme value distribution.
-    Parameters:
+    INPUTS:
         x     : scalar or array-like
         param : list or array-like of [m, s, k]
-    Returns:
+    OUTPUTS:
         f     : same shape as x, PDF values
     '''
-    m, s, k = param
+
+    x, m, s, k, n = _ppp_(x, m, s, k) 
+
     z = (x - m) / s
-    arg = 1 + k * z
-    f = (1 / s) * np.exp(-arg**(-1 / k)) * arg**(-1 - 1 / k)
-    f = np.where(arg < 0, np.finfo(float).eps, f)
-    return np.real(f)
+    kzp1 = k * z + 1
+    f = (1 / s) * np.exp(-kzp1**(-1 / k)) * kzp1**(-1 - 1 / k)
+
+    f = np.where(kzp1 < 0, np.finfo(float).eps, f)
+
+    f = np.real(f)
+
+    if n == 1 and f.shape[0] == 1:
+        f = f.flatten()
+
+    return
 
 
-def cdf(x, param):
+def cdf(x, params):
     '''
     gev.cdf 
 
     Compute the CDF of the generalized extreme value distribution.
-    Parameters:
-        x     : scalar or array-like
-        param : list or array-like of [m, s, k]
-    Returns:
-        F     : same shape as x, CDF values
+    INPUTS:
+        x      : scalar or array-like
+        params : array-like [m, s, k]
+    OUTPUTS:
+        F      : same shape as x, CDF values
     '''
-    m, s, k = param
+    m, s, k = params
+
+    x, m, s, k, n = _ppp_(x, m, s, k) 
+
     z = (x - m) / s
-    arg = 1 + k * z
-    F = np.exp(-arg**(-1 / k))
-    F = np.where(arg < 0, np.finfo(float).eps, F)
-    return np.real(F)
+    kzp1 = k * z + 1
+    F = np.exp(-kzp1**(-1 / k))
+    F = np.where(kzp1 < 0, np.finfo(float).eps, F)
+
+    F = np.real(F)
+
+    if n == 1 and F.shape[0] == 1:
+        F = F.flatten()
+
+    return 
 
 
-def inv(p, param):
+def inv(F, m, s, k):
     '''
     gev.inv
 
     Compute the inverse CDF (quantile function) of the GEV distribution.
-    Parameters:
-        p     : scalar or array-like in (0,1)
-        param : list or array-like of [m, s, k]
-    Returns:
+    INPUTS:
+        F     : scalar or array-like in (0,1)
+        m, s, k : list or array-like parameters 
+    OUTPUTS:
         x     : same shape as p, quantiles
     '''
-    m, s, k = param
-    x = m + (s / k) * ((-np.log(p))**(-k) - 1)
+
+    _, m, s, k, n = _ppp_(0, m, s, k) 
+
+    F = np.atleast_2d(F).astype(float)
+    F = np.clip(F, np.finfo(float).eps, 1 - np.finfo(float).eps)
+    N = F.shape[1]    
+
+    x = np.zeros((n,N))
+
+    for i in range(n):
+        x[i,:] = m[i] + (s[i] / k[i]) * ((-np.log(F[i,:]))**(-k[i]) - 1)
+
+    if n == 1 and x.shape[0] == 1:
+        x = x.flatten()
+
     return x
 
 
-def rnd(param, r, c=None):
+def rnd(m, s, k, N, R=None, seed=None):
     '''
     gev.rnd
 
     Generate random samples from the GEV distribution.
     
-    Parameters:
-        param : list [m, s, k]
-        r     : int or ndarray
-                If c is None: treat r as pre-generated samples
-                If c is provided: r is number of rows
-        c     : int or None
-                Number of columns (optional)
-    Returns:
-        x : ndarray of GEV samples
+    INPUTS:
+        m     : float (n,)
+        s     : float (n,)
+        k     : float (n,)
+        N     : int 
+                Number of observations of the gev distribution
+        R     : float (n,n) correlation matrix
+    OUTPUTS:
+        X : ndarray of GEV samples
     '''
-    m, s, k = param
+    _, m, s, k, n = _ppp_(0, m, s, k) 
+   
+    _, _, U = correlated_rvs( R, n, N, seed )
 
-    if c is None:
-        # r is a pre-generated sample matrix
-        u = np.asarray(r)
-    else:
-        # Generate r×c uniform samples
-        u = np.random.rand(r, c)
+    # Apply transformation 
+    X = inv(U, m, s, k)
 
-    x = m + (s / k) * ((-np.log(u))**(-k) - 1)
-    return x
+    return X
