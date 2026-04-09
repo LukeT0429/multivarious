@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from multivarious.utl import plot_scatter_hist
 
-def mimo_rs(dataX, dataY, max_order=2, pTrain=70, scaling=1, L1_pnlty=1.0, basis_fctn='H', var_names=None ):
+def mimo_srs(dataX, dataY, max_order=2, pTrain=70, scaling=1, L1_pnlty=1.0, basis_fctn='H', var_names=None ):
     '''
-    [ ordr, coeff, meanX, meanY, invTX, TY, testModelY, testX, testY ] = mimo_rs( dataX, dataY, max_order, pTrain, scaling, L1_pntly, basis_fctn, var_names=None )
+    [ ordr, coeff, meanX, meanY, invTX, TY, testModelY, testX, testY ] = mimo_srs( dataX, dataY, max_order, pTrain, scaling, L1_pntly, basis_fctn, var_names=None )
     
-    mimo_rs: multi-input multi-output response surface 
+    mimo_srs: multi-input multi-output response surface 
     
     This program fits a polynomial to multidimensional data 
     by projecting the data onto a polynomial basis of oder up to 10 (or more)
@@ -13,7 +14,7 @@ def mimo_rs(dataX, dataY, max_order=2, pTrain=70, scaling=1, L1_pnlty=1.0, basis
     The polynomial basis may be Hermite, Legendre, or Power polynomials. 
     The model complexity is managed via L1 regularization. 
     
-     mimo_rs approximates data with a polynomial of arbitrary order,
+     mimo_srs approximates data with a polynomial of arbitrary order,
 
        y(X) = a + sum_i=1 ^n sum j=1^k_i b_ij X_i^j + 
                   sum q=1 ^m c_q prod i=1 ^n X_i^{p_iq}.
@@ -61,7 +62,7 @@ def mimo_rs(dataX, dataY, max_order=2, pTrain=70, scaling=1, L1_pnlty=1.0, basis
     Siu Chung Yau, Henri P. Gavin, January 2006, 2023
     '''
 
-    print('\n Multi-Input Multi-Output Response Surface (mimo_rs)\n')
+    print('\n Multi-Input Multi-Output Response Surface (mimo_srs)\n')
 
     # Handle default arguments and convert to appropriate types
     max_order = int(round(abs(max_order)))
@@ -78,11 +79,11 @@ def mimo_rs(dataX, dataY, max_order=2, pTrain=70, scaling=1, L1_pnlty=1.0, basis
          4: "log transform and decorrelation" }
    
     if not np.isfinite(dataX).all():
-        print(' mimo_rs: dataX has infinite or NaN values\n\n')
+        print(' mimo_srs: dataX has infinite or NaN values\n\n')
         exit(100)
 
     if not np.isfinite(dataY).all():
-        print(' mimo_rs: dataY has infinite or NaN values\n\n')
+        print(' mimo_srs: dataY has infinite or NaN values\n\n')
         exit(100)
 
     nInp, mDataX = dataX.shape   # number of columns in dataX is mData
@@ -100,7 +101,7 @@ def mimo_rs(dataX, dataY, max_order=2, pTrain=70, scaling=1, L1_pnlty=1.0, basis
     else:
         mData = min(mDataX,mDataY)
 
-    scatter_data(dataX, dataY, figNo=100, var_names = var_names )
+    plot_scatter_hist(dataX, dataY, fig_no=100, var_names = var_names, ci=0.90 )
 
     # scale data matrices for X (explanatory) and Y (dependent) variables
     # separately since using the covariance between X and Y in the model
@@ -152,7 +153,7 @@ def mimo_rs(dataX, dataY, max_order=2, pTrain=70, scaling=1, L1_pnlty=1.0, basis
         xNames = [rf"$zX_{i+1}$" for i in range(nZx)]
         yNames = [rf"$zY_{i+1}$" for i in range(nZy)]
         z_names = { 'X': xNames  , 'Y': yNames }
-        scatter_data(Zx, Zy, figNo=101, var_names = z_names)
+        plot_scatter_hist(Zx, Zy, fig_no=101, var_names = z_names, ci=0.90 )
 
     #import time as time
     #from datetime import datetime, timedelta
@@ -192,129 +193,6 @@ def mimo_rs(dataX, dataY, max_order=2, pTrain=70, scaling=1, L1_pnlty=1.0, basis
     return ordr, coeff, meanX, meanY, invTX, TY, testX, testY, testModelY
 
 
-def scatter_data(dataX, dataY, figNo=100, var_names=None):
-    '''
-    scatter_data(dataX, dataY, figNo, var_names)
-    Create scatter plots of each pair of input and output variables
-    
-    INPUT       DESCRIPTION                                           DIMENSION
-    --------    ---------------------------------------------------   ---------
-    dataX       matrix of input data                                   nInp x m
-    dataY       matrix of output data                                  nOut x m
-    figNo       figure number for plotting (default = 100)             1 x 1
-    var_names   optional dictionary with keys 'X' and 'Y' containing
-                lists of variable names for labeling                   dict
-    
-    OUTPUT      DESCRIPTION                                           DIMENSION
-    --------    ---------------------------------------------------   ---------
-    None        Creates matplotlib figure with scatter plot matrix
-    
-    NOTE: For high-dimensional data, this can create many subplots.
-          The function creates a grid showing:
-          - X vs X correlations in upper left
-          - Y vs X correlations in lower left and upper right
-          - Y vs Y correlations in lower right
-    '''
-    nInp, m = dataX.shape
-    nOut, _ = dataY.shape
-
-    #print(var_names)
-    
-    # Set up variable names if not provided
-    if var_names is None:
-        xNames = [rf"$x_{i+1}$" for i in range(nInp)]
-        yNames = [rf"$y_{i+1}$" for i in range(nOut)]
-    else:
-        xNames = var_names.get('X') #, [rf"$zX_{i+1}$" for i in range(nInp)])
-        yNames = var_names.get('Y') #, [rf"$zY_{i+1}$" for i in range(nOut)])
-        #xNames = [rf"$zX_{i+1}$" for i in range(nInp)]
-        #yNames = [rf"$zY_{i+1}$" for i in range(nOut)]
-
-    # Calculate number of subplots needed
-    nTotalVars = nInp + nOut
-    
-    # Create figure with subplots
-    plt.ion() # interactive mode: on
-    fig = plt.figure(figNo, figsize=(2*nTotalVars, 2*nTotalVars))
-    plt.clf()
-    
-    plotIndex = 1
-    
-    # Create scatter plots for all pairs
-    for iRow in range(nTotalVars):
-        for iCol in range(nTotalVars):
-#           print(f' iRow = {iRow}   iCol = {iCol}')
-
-            ax = plt.subplot(nTotalVars, nTotalVars, plotIndex)
-            
-            # Determine which data to plot
-            if iRow < nInp and iCol < nInp:
-                # X vs X
-                xData = dataX[iCol, :]
-                yData = dataX[iRow, :]
-                xLabel = xNames[iCol]
-                yLabel = xNames[iRow]
-                color = 'navy'
-                
-            elif iRow >= nInp and iCol < nInp:
-                # Y vs X
-                xData = dataX[iCol, :]
-                yData = dataY[iRow - nInp, :]
-                xLabel = xNames[iCol]
-                yLabel = yNames[iRow - nInp]
-                color = 'darkcyan'
-                
-            elif iRow >= nInp and iCol >= nInp:
-                # Y vs Y
-                xData = dataY[iCol - nInp, :]
-                yData = dataY[iRow - nInp, :]
-                xLabel = yNames[iCol - nInp]
-                yLabel = yNames[iRow - nInp]
-                color = 'darkgreen'
-                
-            elif iRow < nInp and iCol >= nInp:
-                # X vs Y (upper right - leave empty or skip)
-                yData = dataX[iRow, :]
-                xData = dataY[iCol - nInp, :]
-                yLabel = xNames[iRow]
-                xLabel = yNames[iCol - nInp]
-                color = 'darkcyan'
-            # else:  
-                # plotIndex += 1
-                # continue
-            
-            # Create scatter plot
-            if iRow == iCol:
-                # Diagonal: plot histogram instead of scatter
-                ax.hist(xData, bins=20, color=color, alpha=0.7, edgecolor='black')
-                # ax.set_ylabel('Count')
-            else:
-                # Off-diagonal: scatter plot
-                ax.plot(xData, yData, 'o', color=color, markersize=2, alpha=0.5)
-            
-            # Add labels only on edges
-            if iRow == nTotalVars - 1:
-                ax.set_xlabel(xLabel, fontsize=16) #, fontweight='bold')
-            else:
-                ax.set_xticklabels([])
-            
-            if iCol == 0:
-                ax.set_ylabel(yLabel, fontsize=16) #, fontweight='bold')
-            else:
-                ax.set_yticklabels([])
-            
-            # Make tick labels smaller
-            ax.tick_params(labelsize=6)
-            
-            plotIndex += 1
-    
-    plt.tight_layout()
-#   plt.suptitle('Pairwise Scatter Plots', fontsize=14, y=1.0)
-    plt.show(block=False)
-    
-    return None
-
-
 def scale_data(Data, scaling):
     '''
     [ Z, meanD, T, maxZ, minZ ] = scale_data(Data, scaling)
@@ -349,7 +227,7 @@ def scale_data(Data, scaling):
 
     if scaling in [ 3 , 4 ]:  # log-transform
         if np.any(Data <= 0):
-            print('  mimo_rs: Data has negative values, can not log-transform\n\n')
+            print('  mimo_srs: Data has negative values, can not log-transform\n\n')
             exit(300)
         Data = np.log(Data);
 
@@ -357,7 +235,7 @@ def scale_data(Data, scaling):
     covData =  np.cov(Data, ddof=1) # data covariance
 
     if not np.isfinite(covData).all():
-        print('  mimo_rs: data covariance has infinite or NaN values \n\n')
+        print('  mimo_srs: data covariance has infinite or NaN values \n\n')
         exit(200)
 
     if scaling <= 0: # no scaling
